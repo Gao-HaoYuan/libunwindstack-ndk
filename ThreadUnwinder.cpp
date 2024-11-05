@@ -47,7 +47,7 @@ namespace unwindstack {
 static void SignalLogOnly(int, siginfo_t*, void*) {
   android::base::ErrnoRestorer restore;
 
-  log_async_safe("pid %d, tid %d: Received a spurious thread signal\n", getpid(),
+  log(0, "pid %d, tid %d: Received a spurious thread signal\n", getpid(),
                  static_cast<int>(android::base::GetThreadId()));
 }
 
@@ -73,7 +73,7 @@ static void SignalHandler(int, siginfo_t*, void* sigcontext) {
     entry->Wake();
   } else {
     // At this point, it is possible that entry has been freed, so just exit.
-    log_async_safe("Timed out waiting for unwind thread to indicate it completed.");
+    log(0, "Timed out waiting for unwind thread to indicate it completed.");
   }
 }
 
@@ -105,7 +105,7 @@ ThreadEntry* ThreadUnwinder::SendSignalToThread(int signal, pid_t tid) {
   struct sigaction old_action = {};
   sigemptyset(&new_action.sa_mask);
   if (sigaction(signal, &new_action, &old_action) != 0) {
-    log_async_safe("sigaction failed: %s", strerror(errno));
+    log(0, "sigaction failed: %s", strerror(errno));
     ThreadEntry::Remove(entry);
     last_error_.code = ERROR_SYSTEM_CALL;
     return nullptr;
@@ -151,7 +151,7 @@ ThreadEntry* ThreadUnwinder::SendSignalToThread(int signal, pid_t tid) {
     last_error_.code = ERROR_THREAD_DOES_NOT_EXIST;
   } else {
     last_error_.code = ERROR_THREAD_TIMEOUT;
-    log_async_safe("Timed out waiting for signal handler to get ucontext data.");
+    log(0, "Timed out waiting for signal handler to get ucontext data.");
   }
 
   ThreadEntry::Remove(entry);

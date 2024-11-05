@@ -36,6 +36,7 @@ void log_to_stdout(bool enable) {
 }
 
 // Send the data to the log.
+#if 0
 void log(uint8_t indent, const char* format, ...) {
   std::string real_format;
   if (indent > 0) {
@@ -53,5 +54,8 @@ void log(uint8_t indent, const char* format, ...) {
   }
   va_end(args);
 }
+#else
+void log(uint8_t indent, const char* format, ...) {}
+#endif
 
 }  // namespace unwindstack
