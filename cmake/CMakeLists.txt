@@ -9,6 +9,7 @@ enable_language(ASM)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
 include_directories(${UNWINDSTACK_ROOT} ${UNWINDSTACK_ROOT}/include ${UNWINDSTACK_ROOT}/lzma/C)
 file(GLOB UNWINDSTACK_SOURCES
+    ${UNWINDSTACK_ROOT}/AndroidUnwinder.cpp
     ${UNWINDSTACK_ROOT}/ArmExidx.cpp
     ${UNWINDSTACK_ROOT}/Demangle.cpp
     ${UNWINDSTACK_ROOT}/DexFiles.cpp
