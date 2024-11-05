@@ -66,4 +66,8 @@ add_library(unwindstack STATIC
     ${UNWINDSTACK_SOURCES}
     ${UNWINDSTACK_SOURCES_ASMGETREGS}
 )
+
+target_include_directories(unwindstack  BEFORE
+    PUBLIC ${UNWINDSTACK_ROOT}/include
+)
 # target_link_libraries(unwindstack lzma)
