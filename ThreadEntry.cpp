@@ -74,8 +74,19 @@ ThreadEntry::~ThreadEntry() {
   }
 }
 
+const char* ThreadEntry::GetWaitTypeName(WaitType type) {
+  switch (type) {
+    case WAIT_FOR_UCONTEXT:
+      return "ucontext";
+    case WAIT_FOR_UNWIND_TO_COMPLETE:
+      return "unwind to complete";
+    case WAIT_FOR_THREAD_TO_RESTART:
+      return "thread to restart";
+  }
+}
+
 bool ThreadEntry::Wait(WaitType type) {
-  static const std::chrono::duration wait_time(std::chrono::seconds(5));
+  static const std::chrono::duration wait_time(std::chrono::seconds(10));
   std::unique_lock<std::mutex> lock(wait_mutex_);
   if (wait_cond_.wait_for(lock, wait_time, [this, type] { return wait_value_ == type; })) {
     return true;

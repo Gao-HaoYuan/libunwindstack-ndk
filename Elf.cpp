@@ -15,21 +15,26 @@
  */
 
 #include <elf.h>
+#include <inttypes.h>
 #include <string.h>
+#include <sys/mman.h>
 
 #include <memory>
 #include <mutex>
 #include <string>
 #include <utility>
 
-#define LOG_TAG "unwind"
-#include <android-base/log_main.h>
+#include <android-base/stringprintf.h>
 
 #include <unwindstack/Elf.h>
 #include <unwindstack/ElfInterface.h>
+#include <unwindstack/Log.h>
 #include <unwindstack/MapInfo.h>
 #include <unwindstack/Memory.h>
 #include <unwindstack/Regs.h>
+#include <unwindstack/SharedString.h>
+
+#include <android-base/stringprintf.h>
 
 #include "ElfInterfaceArm.h"
 #include "Symbols.h"
@@ -37,7 +42,7 @@
 namespace unwindstack {
 
 bool Elf::cache_enabled_;
-std::unordered_map<std::string, std::pair<std::shared_ptr<Elf>, bool>>* Elf::cache_;
+std::unordered_map<std::string, std::unordered_map<uint64_t, std::shared_ptr<Elf>>>* Elf::cache_;
 std::mutex* Elf::cache_lock_;
 
 bool Elf::Init() {
@@ -101,8 +106,8 @@ std::string Elf::GetSoname() {
   return interface_->GetSoname();
 }
 
-uint64_t Elf::GetRelPc(uint64_t pc, const MapInfo* map_info) {
-  return pc - map_info->start + load_bias_ + map_info->elf_offset;
+uint64_t Elf::GetRelPc(uint64_t pc, MapInfo* map_info) {
+  return pc - map_info->start() + load_bias_ + map_info->elf_offset();
 }
 
 bool Elf::GetFunctionName(uint64_t addr, SharedString* name, uint64_t* func_offset) {
@@ -200,24 +205,6 @@ bool Elf::Step(uint64_t rel_pc, Regs* regs, Memory* process_memory, bool* finish
   // Lock during the step which can update information in the object.
   std::lock_guard<std::mutex> guard(lock_);
   return interface_->Step(rel_pc, regs, process_memory, finished, is_signal_frame);
-}
-
-// The relative pc is always relative to the start of the map from which it comes.
-bool Elf::Step(uint64_t rel_pc, uint64_t adjusted_rel_pc, uint64_t elf_offset, Regs* regs,
-               Memory* process_memory, bool* finished) {
-  if (!valid_) {
-    return false;
-  }
-
-  // The relative pc expectd by StepIfSignalHandler is relative to the start of the elf.
-  if (regs->StepIfSignalHandler(rel_pc + elf_offset, this, process_memory)) {
-    *finished = false;
-    return true;
-  }
-
-  // Lock during the step which can update information in the object.
-  std::lock_guard<std::mutex> guard(lock_);
-  return interface_->Step(adjusted_rel_pc, load_bias_, regs, process_memory, finished);
 }
 
 bool Elf::IsValidElf(Memory* memory) {
@@ -320,7 +307,6 @@ ElfInterface* Elf::CreateInterfaceFromMemory(Memory* memory) {
       interface.reset(new ElfInterface32(memory));
     } else {
       // Unsupported.
-      ALOGI("32 bit elf that is neither arm nor x86 nor mips: e_machine = %d\n", e_machine);
       return nullptr;
     }
   } else if (class_type_ == ELFCLASS64) {
@@ -338,8 +324,6 @@ ElfInterface* Elf::CreateInterfaceFromMemory(Memory* memory) {
       arch_ = ARCH_MIPS64;
     } else {
       // Unsupported.
-      ALOGI("64 bit elf that is neither aarch64 nor x86_64 nor mips64: e_machine = %d\n",
-            e_machine);
       return nullptr;
     }
     interface.reset(new ElfInterface64(memory));
@@ -369,7 +353,8 @@ int64_t Elf::GetLoadBias(Memory* memory) {
 void Elf::SetCachingEnabled(bool enable) {
   if (!cache_enabled_ && enable) {
     cache_enabled_ = true;
-    cache_ = new std::unordered_map<std::string, std::pair<std::shared_ptr<Elf>, bool>>;
+    cache_ =
+        new std::unordered_map<std::string, std::unordered_map<uint64_t, std::shared_ptr<Elf>>>;
     cache_lock_ = new std::mutex;
   } else if (cache_enabled_ && !enable) {
     cache_enabled_ = false;
@@ -387,58 +372,49 @@ void Elf::CacheUnlock() {
 }
 
 void Elf::CacheAdd(MapInfo* info) {
-  // If elf_offset != 0, then cache both name:offset and name.
-  // The cached name is used to do lookups if multiple maps for the same
-  // named elf file exist.
-  // For example, if there are two maps boot.odex:1000 and boot.odex:2000
-  // where each reference the entire boot.odex, the cache will properly
-  // use the same cached elf object.
-
-  if (info->offset == 0 || info->elf_offset != 0) {
-    (*cache_)[info->name] = std::make_pair(info->elf, true);
+  if (!info->elf()->valid()) {
+    return;
   }
-
-  if (info->offset != 0) {
-    // The second element in the pair indicates whether elf_offset should
-    // be set to offset when getting out of the cache.
-    std::string key = std::string(static_cast<const std::string&>(info->name)) + ':' + std::to_string(info->offset);
-    (*cache_)[key] = std::make_pair(info->elf, info->elf_offset != 0);
-  }
-}
-
-bool Elf::CacheAfterCreateMemory(MapInfo* info) {
-  if (info->name.empty() || info->offset == 0 || info->elf_offset == 0) {
-    return false;
-  }
-
-  auto entry = cache_->find(info->name);
-  if (entry == cache_->end()) {
-    return false;
-  }
-
-  // In this case, the whole file is the elf, and the name has already
-  // been cached. Add an entry at name:offset to get this directly out
-  // of the cache next time.
-  info->elf = entry->second.first;
-  std::string key = std::string(static_cast<const std::string&>(info->name)) + ':' + std::to_string(info->offset);
-  (*cache_)[key] = std::make_pair(info->elf, true);
-  return true;
+  (*cache_)[std::string(info->name())].emplace(info->elf_start_offset(), info->elf());
 }
 
 bool Elf::CacheGet(MapInfo* info) {
-  std::string name(static_cast<const std::string&>(info->name));
-  if (info->offset != 0) {
-    name += ':' + std::to_string(info->offset);
+  auto name_entry = cache_->find(std::string(info->name()));
+  if (name_entry == cache_->end()) {
+    return false;
   }
-  auto entry = cache_->find(name);
-  if (entry != cache_->end()) {
-    info->elf = entry->second.first;
-    if (entry->second.second) {
-      info->elf_offset = info->offset;
+  // First look to see if there is a zero offset entry, this indicates
+  // the whole elf is the file.
+  auto& offset_cache = name_entry->second;
+  uint64_t elf_start_offset = 0;
+  auto entry = offset_cache.find(elf_start_offset);
+  if (entry == offset_cache.end()) {
+    // Try and find using the current offset.
+    elf_start_offset = info->offset();
+    entry = offset_cache.find(elf_start_offset);
+    if (entry == offset_cache.end()) {
+      // If this is an execute map, then see if the previous read-only
+      // map is the start of the elf.
+      if (!(info->flags() & PROT_EXEC)) {
+        return false;
+      }
+      auto prev_map = info->GetPrevRealMap();
+      if (prev_map == nullptr || info->offset() <= prev_map->offset() ||
+          (prev_map->flags() != PROT_READ)) {
+        return false;
+      }
+      elf_start_offset = prev_map->offset();
+      entry = offset_cache.find(elf_start_offset);
+      if (entry == offset_cache.end()) {
+        return false;
+      }
     }
-    return true;
   }
-  return false;
+
+  info->set_elf(entry->second);
+  info->set_elf_start_offset(elf_start_offset);
+  info->set_elf_offset(info->offset() - elf_start_offset);
+  return true;
 }
 
 std::string Elf::GetBuildID(Memory* memory) {
@@ -457,6 +433,23 @@ std::string Elf::GetBuildID(Memory* memory) {
     return ElfInterface::ReadBuildIDFromMemory<Elf64_Ehdr, Elf64_Shdr, Elf64_Nhdr>(memory);
   }
   return "";
+}
+
+std::string Elf::GetPrintableBuildID(std::string& build_id) {
+  if (build_id.empty()) {
+    return "";
+  }
+  std::string printable_build_id;
+  for (const char& c : build_id) {
+    // Use %hhx to avoid sign extension on abis that have signed chars.
+    printable_build_id += android::base::StringPrintf("%02hhx", c);
+  }
+  return printable_build_id;
+}
+
+std::string Elf::GetPrintableBuildID() {
+  std::string build_id = GetBuildID();
+  return Elf::GetPrintableBuildID(build_id);
 }
 
 }  // namespace unwindstack
