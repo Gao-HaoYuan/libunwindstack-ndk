@@ -304,20 +304,20 @@ std::string Unwinder::FormatFrame(const FrameData& frame) const {
 std::string Unwinder::FormatFrame(ArchEnum arch, const FrameData& frame, bool display_build_id) {
   std::string data;
   if (ArchIs32Bit(arch)) {
-    data += android::base::StringPrintf("  #%02zu pc %08" PRIx64, frame.num, frame.rel_pc);
+    data += android::base::StringPrintf("#%02zu pc %08" PRIx64, frame.num, frame.rel_pc);
   } else {
-    data += android::base::StringPrintf("  #%02zu pc %016" PRIx64, frame.num, frame.rel_pc);
+    data += android::base::StringPrintf("#%02zu pc %016" PRIx64, frame.num, frame.rel_pc);
   }
 
   auto map_info = frame.map_info;
   if (map_info == nullptr) {
     // No valid map associated with this frame.
-    data += "  <unknown>";
+    data += " <unknown>";
   } else if (!map_info->name().empty()) {
-    data += "  ";
+    data += " ";
     data += map_info->GetFullName();
   } else {
-    data += android::base::StringPrintf("  <anonymous:%" PRIx64 ">", map_info->start());
+    data += android::base::StringPrintf(" <anonymous:%" PRIx64 ">", map_info->start());
   }
 
   if (map_info != nullptr && map_info->elf_start_offset() != 0) {
@@ -325,7 +325,7 @@ std::string Unwinder::FormatFrame(ArchEnum arch, const FrameData& frame, bool di
   }
 
   if (!frame.function_name.empty()) {
-    data += " (" + DemangleNameIfNeeded(frame.function_name);
+    data += "(" + DemangleNameIfNeeded(frame.function_name);
     if (frame.function_offset != 0) {
       data += android::base::StringPrintf("+%" PRId64, frame.function_offset);
     }

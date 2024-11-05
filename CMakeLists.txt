@@ -12,7 +12,7 @@ endif()
 add_subdirectory(cmake)
 
 add_executable(main ./tools/android_unwind.cpp)
-target_link_libraries(main unwindstack log)
+target_link_libraries(main unwindstack)
 
 add_custom_target(
   copy_database_compile_commands ALL

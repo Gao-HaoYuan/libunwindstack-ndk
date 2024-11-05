@@ -36,7 +36,6 @@ file(GLOB UNWINDSTACK_SOURCES
     ${UNWINDSTACK_ROOT}/android-base/file.cpp
     ${UNWINDSTACK_ROOT}/android-base/strings.cpp
     ${UNWINDSTACK_ROOT}/android-base/threads.cpp
-    ${UNWINDSTACK_ROOT}/getline.c
     ${UNWINDSTACK_ROOT}/RegsArm.cpp
     ${UNWINDSTACK_ROOT}/RegsArm64.cpp
     ${UNWINDSTACK_ROOT}/RegsMips.cpp

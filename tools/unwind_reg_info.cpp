@@ -35,9 +35,9 @@
 #include <unwindstack/Log.h>
 #include <unwindstack/Memory.h>
 
-#include "ArmExidx.h"
-#include "DwarfOp.h"
-#include "ElfInterfaceArm.h"
+#include "../ArmExidx.h"
+#include "../DwarfOp.h"
+#include "../ElfInterfaceArm.h"
 
 namespace unwindstack {
 

@@ -33,8 +33,8 @@
 #include <unwindstack/Log.h>
 #include <unwindstack/Memory.h>
 
-#include "ArmExidx.h"
-#include "ElfInterfaceArm.h"
+#include "../ArmExidx.h"
+#include "../ElfInterfaceArm.h"
 
 namespace unwindstack {
 
